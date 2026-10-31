@@ -1,0 +1,85 @@
+import argparse
+import sys
+import time
+
+from arguments import build_parser
+from utils import parse_ports, expand_targets
+from host_discovery import ping
+from port_scanner import scan_ports
+from service_detection import detect_service
+import custom_dns
+
+
+def resolve_dns(host):
+    return custom_dns.resolve_a(host)
+    try:
+        answers = dns.resolver.resolve(host, 'A')
+        return [str(rdata) for rdata in answers]
+    except Exception:
+        return []
+
+
+def main():
+    parser = build_parser()
+    args = parser.parse_args()
+
+    scan_type = 'connect'
+    if args.sS:
+        scan_type = 'syn'
+    elif args.sU:
+        scan_type = 'udp'
+
+    port_list = parse_ports(args.p)
+
+    targets = expand_targets(args.targets)
+    results = {}
+
+    for target in targets:
+        print(f"\nScanning {target}...", flush=True)
+        alive = ping(target)
+        if not alive:
+            print(f"{target} is unreachable.")
+            continue
+        dns_ips = resolve_dns(target)
+        host_info = {
+            'target': target,
+            'dns': dns_ips,
+            'ports': {},
+        }
+        port_results = scan_ports(target, port_list, scan_type=scan_type)
+        for port, open_ in port_results.items():
+            if open_:
+                service = detect_service(target, port)
+                host_info['ports'][port] = {'open': True, 'service': service}
+            else:
+                host_info['ports'][port] = {'open': False, 'service': None}
+        results[target] = host_info
+
+    # Output
+    def fmt():
+        lines = []
+        for host, data in results.items():
+            lines.append(f"Host: {host}")
+            if data['dns']:
+                lines.append(f"  DNS: {', '.join(data['dns'])}")
+            for port, info in data['ports'].items():
+                state = 'open' if info['open'] else 'closed'
+                svc = f" ({info['service']})" if info['service'] else ''
+                lines.append(f"  Port {port}: {state}{svc}")
+            lines.append('')
+        return '\n'.join(lines)
+
+    output_text = fmt()
+    print(output_text)
+
+    if args.oN:
+        try:
+            with open(args.oN, 'w') as f:
+                f.write(output_text)
+            print(f"Results written to {args.oN}")
+        except Exception as e:
+            print(f"Failed to write output file: {e}", file=sys.stderr)
+
+
+if __name__ == "__main__":
+    main()

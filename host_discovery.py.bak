@@ -1,0 +1,18 @@
+import time
+import socket
+import sys
+from scapy.all import sr1, IP, ICMP, conf
+
+conf.verb = 0  # suppress scapy output
+
+
+def ping(target, timeout=1, count=3):
+    """Return True if host responds to ping."""
+    # Simple reachability: try connecting to port 80, 443, 22
+    for port in (80, 443, 22):
+        try:
+            with socket.create_connection((target, port), timeout=timeout):
+                return True
+        except Exception:
+            continue
+    return False

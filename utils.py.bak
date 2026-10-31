@@ -1,0 +1,30 @@
+import ipaddress
+
+
+def parse_ports(port_str):
+    """Parse port string like '22,80,443' or '1-1024' into list of ints"""
+    ports = set()
+    for part in port_str.split(','):
+        if '-' in part:
+            start, end = part.split('-', 1)
+            ports.update(range(int(start), int(end)+1))
+        else:
+            ports.add(int(part))
+    return sorted(ports)
+
+
+def expand_targets(targets):
+    """Expand target list into list of IP strings."""
+    result = []
+    for t in targets:
+        try:
+            # if CIDR
+            net = ipaddress.ip_network(t, strict=False)
+            if net.prefixlen == 32:
+                result.append(str(net.network_address))
+            else:
+                result.extend([str(ip) for ip in net.hosts()])
+        except ValueError:
+            # single IP
+            result.append(t)
+    return result
